@@ -374,7 +374,6 @@ export async function POST(req: NextRequest) {
           // ── Skip crawl — use provided URLs directly ──
           emit({ step: "crawl", type: "start", message: "Skipping crawl — using provided page URLs" });
           allPages = urls.map((url: string) => ({ url, title: "", description: "", statusCode: 200 }));
-          emit({ step: "crawl", type: "done", message: `Using ${allPages.length} provided page URL(s)`, data: { crawledUrls: allPages.map(p => p.url) } });
         } else {
           // ── Step 1: Crawl ──
           emit({ step: "crawl", type: "start", message: `Crawling ${urls.length} site(s)...` });
@@ -384,9 +383,21 @@ export async function POST(req: NextRequest) {
             const pages = await crawlSite(url, keys.firecrawl, emit);
             allPages.push(...pages);
           }
-          // Emit all discovered URLs so the client can export them immediately
-          emit({ step: "crawl", type: "done", message: `Found ${allPages.length} pages across ${urls.length} site(s)`, data: { crawledUrls: allPages.map(p => p.url) } });
         }
+
+        // Write crawled URLs to a txt file immediately so the client can download/copy
+        const reportsDir = path.join(process.cwd(), "public", "reports");
+        await mkdir(reportsDir, { recursive: true });
+        const urlsTxtPath = path.join(reportsDir, `${auditId}-urls.txt`);
+        await writeFile(urlsTxtPath, allPages.map(p => p.url).join("\n"), "utf-8");
+        const urlsFileUrl = `/reports/${auditId}-urls.txt`;
+
+        emit({
+          step: "crawl",
+          type: "done",
+          message: `Found ${allPages.length} page${allPages.length !== 1 ? "s" : ""}`,
+          data: { urlsFileUrl },
+        });
 
         // ── Step 2: Audit ──
         emit({ step: "audit", type: "start", message: `Auditing ${allPages.length} pages with DataForSEO...` });

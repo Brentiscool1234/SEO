@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, XCircle, Loader2, Download, ArrowLeft,
-  Globe, Search, FileText, Sparkles, ChevronRight, Copy, FileDown,
+  Globe, Search, FileText, Sparkles, ChevronRight, Copy,
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -24,7 +24,7 @@ interface SSEEvent {
   type: "start" | "progress" | "done" | "error";
   message: string;
   detail?: string;
-  data?: { downloadUrl?: string; pageCount?: number; crawledUrls?: string[] };
+  data?: { downloadUrl?: string; pageCount?: number; urlsFileUrl?: string };
 }
 
 // ── Step definitions ───────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
-  const [crawledUrls, setCrawledUrls] = useState<string[]>([]);
+  const [urlsFileUrl, setUrlsFileUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const updateStep = (key: StepKey, patch: Partial<StepState>) =>
@@ -119,7 +119,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
     else if (ev.type === "done")     {
       updateStep(key, { status: "done", summary: ev.message });
       appendLog(key, ev.message, ev.detail);
-      if (key === "crawl" && ev.data?.crawledUrls?.length) setCrawledUrls(ev.data.crawledUrls);
+      if (key === "crawl" && ev.data?.urlsFileUrl) setUrlsFileUrl(ev.data.urlsFileUrl);
     }
     else if (ev.type === "error")    { updateStep(key, { status: "error", summary: ev.message }); setFatalError(ev.message); }
   }
@@ -134,19 +134,20 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
   const progress = STEPS.filter(s => steps[s.key].status === "done").length;
   const activeStep = STEPS.find(s => steps[s.key].status === "running");
 
-  const copyUrls = () => {
-    navigator.clipboard.writeText(crawledUrls.join("\n"));
+  const copyUrls = async () => {
+    if (!urlsFileUrl) return;
+    const text = await fetch(urlsFileUrl).then(r => r.text());
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const downloadUrls = () => {
-    const blob = new Blob([crawledUrls.join("\n")], { type: "text/plain" });
+    if (!urlsFileUrl) return;
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = urlsFileUrl;
     a.download = `crawled-urls-${auditId}.txt`;
     a.click();
-    URL.revokeObjectURL(a.href);
   };
 
   return (
@@ -250,7 +251,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
         </div>
 
         {/* Crawled URLs export — shown as soon as crawl finishes */}
-        {crawledUrls.length > 0 && (
+        {urlsFileUrl && (
           <div className="card rounded-2xl p-4 mb-3 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
