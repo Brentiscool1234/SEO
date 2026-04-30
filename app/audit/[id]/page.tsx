@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, XCircle, Loader2, Download, ArrowLeft,
-  Globe, Search, FileText, Sparkles, ChevronRight,
+  Globe, Search, FileText, Sparkles, ChevronRight, Copy, FileDown,
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -24,7 +24,7 @@ interface SSEEvent {
   type: "start" | "progress" | "done" | "error";
   message: string;
   detail?: string;
-  data?: { downloadUrl?: string; pageCount?: number };
+  data?: { downloadUrl?: string; pageCount?: number; crawledUrls?: string[] };
 }
 
 // ── Step definitions ───────────────────────────────────────────────────────
@@ -53,6 +53,8 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
+  const [crawledUrls, setCrawledUrls] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
 
   const updateStep = (key: StepKey, patch: Partial<StepState>) =>
     setSteps(p => ({ ...p, [key]: { ...p[key], ...patch } }));
@@ -114,7 +116,11 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
     if (!["crawl", "audit", "report", "pdf"].includes(key)) return;
     if (ev.type === "start")    { updateStep(key, { status: "running", summary: ev.message }); appendLog(key, ev.message, ev.detail); }
     else if (ev.type === "progress") { updateStep(key, { summary: ev.message }); appendLog(key, ev.message, ev.detail); }
-    else if (ev.type === "done")     { updateStep(key, { status: "done", summary: ev.message }); appendLog(key, ev.message, ev.detail); }
+    else if (ev.type === "done")     {
+      updateStep(key, { status: "done", summary: ev.message });
+      appendLog(key, ev.message, ev.detail);
+      if (key === "crawl" && ev.data?.crawledUrls?.length) setCrawledUrls(ev.data.crawledUrls);
+    }
     else if (ev.type === "error")    { updateStep(key, { status: "error", summary: ev.message }); setFatalError(ev.message); }
   }
 
@@ -127,6 +133,21 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
 
   const progress = STEPS.filter(s => steps[s.key].status === "done").length;
   const activeStep = STEPS.find(s => steps[s.key].status === "running");
+
+  const copyUrls = () => {
+    navigator.clipboard.writeText(crawledUrls.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadUrls = () => {
+    const blob = new Blob([crawledUrls.join("\n")], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `crawled-urls-${auditId}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
     <div className="min-h-screen">
@@ -227,6 +248,32 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
             );
           })}
         </div>
+
+        {/* Crawled URLs export — shown as soon as crawl finishes */}
+        {crawledUrls.length > 0 && (
+          <div className="card rounded-2xl p-4 mb-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-main">{crawledUrls.length} URLs discovered</p>
+                <p className="text-xs text-muted mt-0.5">Export now in case you need them later.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyUrls}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-muted hover:text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                >
+                  {copied ? <><CheckCircle size={13} className="text-emerald-500" /> Copied!</> : <><Copy size={13} /> Copy</>}
+                </button>
+                <button
+                  onClick={downloadUrls}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-all"
+                >
+                  <FileDown size={13} /> Download .txt
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Fatal error */}
         {fatalError && (

@@ -142,7 +142,7 @@ async function auditPage(
     // instant_pages accepts exactly 1 task per request
     postRes = await axios.post(
       "https://api.dataforseo.com/v3/on_page/instant_pages",
-      [{ url: page.url, load_resources: false, enable_javascript: false }],
+      [{ url: page.url }],
       { headers }
     );
   } catch (err: unknown) {
@@ -334,7 +334,7 @@ export async function POST(req: NextRequest) {
           // ── Skip crawl — use provided URLs directly ──
           emit({ step: "crawl", type: "start", message: "Skipping crawl — using provided page URLs" });
           allPages = urls.map((url: string) => ({ url, title: "", description: "", statusCode: 200 }));
-          emit({ step: "crawl", type: "done", message: `Using ${allPages.length} provided page URL(s)` });
+          emit({ step: "crawl", type: "done", message: `Using ${allPages.length} provided page URL(s)`, data: { crawledUrls: allPages.map(p => p.url) } });
         } else {
           // ── Step 1: Crawl ──
           emit({ step: "crawl", type: "start", message: `Crawling ${urls.length} site(s)...` });
@@ -344,7 +344,8 @@ export async function POST(req: NextRequest) {
             const pages = await crawlSite(url, keys.firecrawl, emit);
             allPages.push(...pages);
           }
-          emit({ step: "crawl", type: "done", message: `Found ${allPages.length} pages across ${urls.length} site(s)` });
+          // Emit all discovered URLs so the client can export them immediately
+          emit({ step: "crawl", type: "done", message: `Found ${allPages.length} pages across ${urls.length} site(s)`, data: { crawledUrls: allPages.map(p => p.url) } });
         }
 
         // ── Step 2: Audit ──
