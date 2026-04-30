@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, XCircle, Loader2, Download, ArrowLeft,
@@ -51,7 +51,8 @@ const ringMap: Record<string, string> = {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function AuditPage({ params }: { params: { id: string } }) {
+export default function AuditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: auditId } = use(params);
   const searchParams = useSearchParams();
   const started = useRef(false);
   const logRefs = useRef<Record<StepKey, HTMLDivElement | null>>({ crawl: null, audit: null, report: null, pdf: null });
@@ -99,7 +100,7 @@ export default function AuditPage({ params }: { params: { id: string } }) {
     const res = await fetch("/api/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls, keys, auditId: params.id }),
+      body: JSON.stringify({ urls, keys, auditId: auditId }),
     });
 
     if (!res.body) { setFatalError("No response stream from server."); return; }
@@ -133,7 +134,7 @@ export default function AuditPage({ params }: { params: { id: string } }) {
       setPageCount(ev.data?.pageCount ?? null);
       const hist = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
       localStorage.setItem("seo_audit_history", JSON.stringify(
-        hist.map((r: { id: string }) => r.id === params.id ? { ...r, status: "done", pdfPath: ev.data?.downloadUrl } : r)
+        hist.map((r: { id: string }) => r.id === auditId ? { ...r, status: "done", pdfPath: ev.data?.downloadUrl } : r)
       ));
       return;
     }
@@ -142,7 +143,7 @@ export default function AuditPage({ params }: { params: { id: string } }) {
       setFatalError(ev.message);
       const hist = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
       localStorage.setItem("seo_audit_history", JSON.stringify(
-        hist.map((r: { id: string }) => r.id === params.id ? { ...r, status: "error" } : r)
+        hist.map((r: { id: string }) => r.id === auditId ? { ...r, status: "error" } : r)
       ));
       return;
     }
