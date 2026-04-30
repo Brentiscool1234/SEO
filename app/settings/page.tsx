@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Key, Eye, EyeOff, CheckCircle, Save, ExternalLink } from "lucide-react";
+import { ArrowLeft, Key, Eye, EyeOff, CheckCircle, Save, ExternalLink, FlaskConical, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -43,10 +43,13 @@ const fields: { key: keyof Keys; label: string; placeholder: string; hint: strin
   },
 ];
 
+type TestState = { status: "idle" | "loading" | "ok" | "error"; message: string };
+
 export default function SettingsPage() {
   const [keys, setKeys] = useState<Keys>({ firecrawl: "", dataforseo_login: "", dataforseo_password: "", anthropic: "" });
   const [show, setShow] = useState<Record<keyof Keys, boolean>>({ firecrawl: false, dataforseo_login: false, dataforseo_password: false, anthropic: false });
   const [saved, setSaved] = useState(false);
+  const [test, setTest] = useState<TestState>({ status: "idle", message: "" });
 
   useEffect(() => {
     const stored = localStorage.getItem("seo_api_keys");
@@ -61,6 +64,30 @@ export default function SettingsPage() {
 
   const toggleShow = (k: keyof Keys) => setShow(p => ({ ...p, [k]: !p[k] }));
   const allFilled = Object.values(keys).every(Boolean);
+
+  const testConnection = async () => {
+    if (!keys.dataforseo_login || !keys.dataforseo_password) {
+      setTest({ status: "error", message: "Enter your DataForSEO login and password first." });
+      return;
+    }
+    setTest({ status: "loading", message: "Connecting to DataForSEO..." });
+    try {
+      const res = await fetch("/api/test-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: keys.dataforseo_login, password: keys.dataforseo_password }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const balance = data.money != null ? ` — Balance: ${data.currency ?? ""}${data.money}` : "";
+        setTest({ status: "ok", message: `Connected as ${data.email}${balance}` });
+      } else {
+        setTest({ status: "error", message: data.message });
+      }
+    } catch {
+      setTest({ status: "error", message: "Network error — is the server running?" });
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -120,6 +147,38 @@ export default function SettingsPage() {
             <span className="font-semibold text-main">DataForSEO API Password</span> is separate from your login password.
             Go to <a href="https://app.dataforseo.com/api-access" target="_blank" rel="noreferrer" className="text-violet-600 hover:underline underline-offset-2">app.dataforseo.com/api-access</a> to find or generate it.
           </p>
+        </div>
+
+        {/* Test DataForSEO connection */}
+        <div className="mt-4 card rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-main">Test DataForSEO Connection</p>
+              <p className="text-xs text-muted mt-0.5">Verify your credentials before running an audit.</p>
+            </div>
+            <button
+              onClick={testConnection}
+              disabled={test.status === "loading"}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-500/20 text-sm font-medium transition-all disabled:opacity-50"
+            >
+              {test.status === "loading"
+                ? <><Loader2 size={14} className="animate-spin" /> Testing...</>
+                : <><FlaskConical size={14} /> Test</>}
+            </button>
+          </div>
+
+          {test.status !== "idle" && test.status !== "loading" && (
+            <div className={`mt-3 flex items-start gap-2 text-xs rounded-lg px-3 py-2.5
+              ${test.status === "ok"
+                ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                : "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400"}`}
+            >
+              {test.status === "ok"
+                ? <CheckCircle size={13} className="flex-shrink-0 mt-0.5" />
+                : <XCircle size={13} className="flex-shrink-0 mt-0.5" />}
+              <span className="break-all leading-relaxed">{test.message}</span>
+            </div>
+          )}
         </div>
 
         <button
