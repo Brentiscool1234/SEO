@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle, XCircle, Loader2, Download, ArrowLeft,
-  Globe, Search, FileText, Sparkles, ChevronRight, Copy,
+  Globe, Search, FileText, Sparkles, ChevronRight, Copy, FileDown,
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
