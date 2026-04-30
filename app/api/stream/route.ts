@@ -123,13 +123,6 @@ export interface PageAuditData {
   checks: Record<string, unknown>;
 }
 
-function dfsError(data: Record<string, unknown>): string | null {
-  // DataForSEO often returns HTTP 200 with an error code in the body
-  const code = data?.status_code as number | undefined;
-  const msg = data?.status_message as string | undefined;
-  if (code && code !== 20000) return `DataForSEO error ${code}: ${msg ?? "unknown"}`;
-  return null;
-}
 
 function sanitizeUrl(raw: string): string | null {
   try {
@@ -161,18 +154,30 @@ async function auditPage(
     if (axios.isAxiosError(err)) {
       const status = err.response?.status;
       const body = err.response?.data;
-      const bodyMsg = typeof body === "object" ? (body?.status_message ?? JSON.stringify(body)) : body;
-      throw new Error(`DataForSEO HTTP ${status}: ${bodyMsg}`);
+      // Extract message from body, fall back to full JSON so nothing is hidden
+      const bodyMsg = typeof body === "object"
+        ? (body?.status_message ?? body?.message ?? JSON.stringify(body))
+        : String(body ?? "no response body");
+      throw new Error(`HTTP ${status}: ${bodyMsg}`);
     }
     throw err;
   }
 
-  const topLevel = dfsError(postRes.data);
-  if (topLevel) throw new Error(topLevel);
+  // Check top-level response status
+  const topCode = postRes.data?.status_code;
+  if (topCode && topCode !== 20000) {
+    throw new Error(`DataForSEO: ${postRes.data?.status_message ?? topCode}`);
+  }
 
   const task = postRes.data?.tasks?.[0];
-  const taskErr = dfsError(task);
-  if (taskErr) throw new Error(taskErr);
+  if (!task) throw new Error("DataForSEO returned no task in response");
+
+  // Check task-level status — this is where per-request errors appear
+  const taskCode = task?.status_code;
+  if (taskCode && taskCode !== 20000) {
+    // Include the full task status so we can diagnose unexpected errors
+    throw new Error(`DataForSEO task error ${taskCode}: ${task?.status_message ?? "no message"}`);
+  }
 
   const item: DFSPageItem = task?.result?.[0]?.items?.[0] ?? {};
   const score = Math.round((item.onpage_score ?? 0) * 100) / 100;
