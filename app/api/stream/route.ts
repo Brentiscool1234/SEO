@@ -273,7 +273,8 @@ async function generatePDF(html: string, auditId: string): Promise<string> {
 // ── Main SSE handler ───────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const { urls, keys, auditId } = await req.json();
+  const { urls, keys, auditId, mode } = await req.json();
+  const auditOnly = mode === "audit-only";
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -283,15 +284,24 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        // ── Step 1: Crawl ──
-        emit({ step: "crawl", type: "start", message: `Crawling ${urls.length} site(s)...` });
-        const allPages: FirecrawlPage[] = [];
-        for (const url of urls) {
-          emit({ step: "crawl", type: "progress", message: "Starting crawl", detail: url });
-          const pages = await crawlSite(url, keys.firecrawl, emit);
-          allPages.push(...pages);
+        let allPages: FirecrawlPage[];
+
+        if (auditOnly) {
+          // ── Skip crawl — use provided URLs directly ──
+          emit({ step: "crawl", type: "start", message: "Skipping crawl — using provided page URLs" });
+          allPages = urls.map((url: string) => ({ url, title: "", description: "", statusCode: 200 }));
+          emit({ step: "crawl", type: "done", message: `Using ${allPages.length} provided page URL(s)` });
+        } else {
+          // ── Step 1: Crawl ──
+          emit({ step: "crawl", type: "start", message: `Crawling ${urls.length} site(s)...` });
+          allPages = [];
+          for (const url of urls) {
+            emit({ step: "crawl", type: "progress", message: "Starting crawl", detail: url });
+            const pages = await crawlSite(url, keys.firecrawl, emit);
+            allPages.push(...pages);
+          }
+          emit({ step: "crawl", type: "done", message: `Found ${allPages.length} pages across ${urls.length} site(s)` });
         }
-        emit({ step: "crawl", type: "done", message: `Found ${allPages.length} pages across ${urls.length} site(s)` });
 
         // ── Step 2: Audit ──
         emit({ step: "audit", type: "start", message: `Auditing ${allPages.length} pages with DataForSEO...` });

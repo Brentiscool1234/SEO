@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ArrowLeft, Key, Eye, EyeOff, CheckCircle, Save, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 interface Keys {
   firecrawl: string;
@@ -21,17 +22,17 @@ const fields: { key: keyof Keys; label: string; placeholder: string; hint: strin
   },
   {
     key: "dataforseo_login",
-    label: "DataForSEO Login (email)",
+    label: "DataForSEO Login",
     placeholder: "you@example.com",
-    hint: "Your DataForSEO account email.",
+    hint: "Your DataForSEO account email address.",
     link: "https://dataforseo.com",
   },
   {
     key: "dataforseo_password",
-    label: "DataForSEO Password",
+    label: "DataForSEO API Password",
     placeholder: "••••••••••••••••",
-    hint: "Your DataForSEO account password.",
-    link: "https://dataforseo.com",
+    hint: "Your DataForSEO API password — find it in your dashboard under API Access, not your account login password.",
+    link: "https://app.dataforseo.com/api-access",
   },
   {
     key: "anthropic",
@@ -63,46 +64,49 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen">
-      <nav className="border-b border-white/[0.06] px-6 py-4 flex items-center gap-4">
-        <Link href="/" className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.05] transition-all">
+      <nav className="border-b divider px-6 py-4 flex items-center gap-3 bg-surface">
+        <Link href="/" className="p-2 rounded-lg text-subtle hover:text-main hover:bg-black/5 dark:hover:bg-white/5 transition-all">
           <ArrowLeft size={16} />
         </Link>
         <div className="flex items-center gap-2">
-          <Key size={16} className="text-violet-400" />
-          <span className="font-semibold text-white">API Keys</span>
+          <Key size={15} className="text-violet-500" />
+          <span className="font-semibold text-main">Settings</span>
+        </div>
+        <div className="ml-auto">
+          <ThemeToggle />
         </div>
       </nav>
 
       <main className="max-w-2xl mx-auto px-6 py-12">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-1">Settings</h1>
-          <p className="text-zinc-500 text-sm">Your keys are stored locally in the browser — never sent anywhere except the respective APIs.</p>
+          <h1 className="text-2xl font-bold text-main mb-1">API Keys</h1>
+          <p className="text-sm text-muted">Stored locally in your browser — never sent anywhere except the respective APIs.</p>
         </div>
 
         <div className="space-y-4">
           {fields.map(f => (
-            <div key={f.key} className="glass rounded-2xl p-5">
+            <div key={f.key} className="card rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-zinc-200">{f.label}</label>
-                <a href={f.link} target="_blank" rel="noreferrer" className="text-xs text-zinc-600 hover:text-violet-400 flex items-center gap-1 transition-colors">
-                  Get key <ExternalLink size={10} />
+                <label className="text-sm font-medium text-main">{f.label}</label>
+                <a href={f.link} target="_blank" rel="noreferrer" className="text-xs text-subtle hover:text-violet-600 flex items-center gap-1 transition-colors">
+                  {f.key === "dataforseo_password" ? "Open API Access page" : "Get key"} <ExternalLink size={10} />
                 </a>
               </div>
-              <p className="text-xs text-zinc-600 mb-3">{f.hint}</p>
+              <p className="text-xs text-muted mb-3 leading-relaxed">{f.hint}</p>
               <div className="relative">
                 <input
                   type={show[f.key] ? "text" : "password"}
                   value={keys[f.key]}
                   onChange={e => setKeys(p => ({ ...p, [f.key]: e.target.value }))}
                   placeholder={f.placeholder}
-                  className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-4 py-3 pr-11 text-sm text-white placeholder-zinc-700 focus:outline-none focus:border-violet-500/50 transition-all"
+                  className="w-full input-base rounded-xl px-4 py-3 pr-11 text-sm placeholder-subtle transition-all"
                 />
-                <button onClick={() => toggleShow(f.key)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
+                <button onClick={() => toggleShow(f.key)} className="absolute right-3 top-1/2 -translate-y-1/2 text-subtle hover:text-muted transition-colors">
                   {show[f.key] ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               {keys[f.key] && (
-                <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-500">
+                <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600 dark:text-emerald-400">
                   <CheckCircle size={11} /> Set
                 </div>
               )}
@@ -110,17 +114,22 @@ export default function SettingsPage() {
           ))}
         </div>
 
+        {/* DataForSEO note */}
+        <div className="mt-4 card rounded-xl p-4 border-l-4 border-l-amber-400 shadow-sm">
+          <p className="text-xs text-muted leading-relaxed">
+            <span className="font-semibold text-main">DataForSEO API Password</span> is separate from your login password.
+            Go to <a href="https://app.dataforseo.com/api-access" target="_blank" rel="noreferrer" className="text-violet-600 hover:underline underline-offset-2">app.dataforseo.com/api-access</a> to find or generate it.
+          </p>
+        </div>
+
         <button
           onClick={save}
           disabled={!allFilled}
           className="mt-6 w-full py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {saved ? <><CheckCircle size={16} /> Saved!</> : <><Save size={16} /> Save Keys</>}
+          {saved ? <><CheckCircle size={15} /> Saved!</> : <><Save size={15} /> Save Keys</>}
         </button>
-
-        {!allFilled && (
-          <p className="text-center text-xs text-zinc-600 mt-3">Fill all fields to save.</p>
-        )}
+        {!allFilled && <p className="text-center text-xs text-subtle mt-3">Fill all fields to save.</p>}
       </main>
     </div>
   );
