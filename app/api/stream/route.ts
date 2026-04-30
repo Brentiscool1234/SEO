@@ -28,6 +28,29 @@ interface FirecrawlPage {
   statusCode?: number;
 }
 
+// Firecrawl v1 raw response shape — data lives under metadata
+interface FirecrawlRawPage {
+  url?: string;
+  title?: string;
+  description?: string;
+  statusCode?: number;
+  metadata?: {
+    sourceURL?: string;
+    title?: string;
+    description?: string;
+    statusCode?: number;
+  };
+}
+
+function normalisePage(p: FirecrawlRawPage): FirecrawlPage {
+  return {
+    url:         p.metadata?.sourceURL ?? p.url ?? "",
+    title:       p.metadata?.title       ?? p.title       ?? "",
+    description: p.metadata?.description ?? p.description ?? "",
+    statusCode:  p.metadata?.statusCode  ?? p.statusCode  ?? 200,
+  };
+}
+
 async function crawlSite(
   baseUrl: string,
   apiKey: string,
@@ -63,7 +86,8 @@ async function crawlSite(
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
 
-    const pages: FirecrawlPage[] = res.data.data || [];
+    const rawPages: FirecrawlRawPage[] = res.data.data || [];
+    const pages = rawPages.map(normalisePage).filter(p => p.url);
     if (pages.length !== lastCount) {
       lastCount = pages.length;
       const latest = pages[pages.length - 1];
@@ -75,14 +99,7 @@ async function crawlSite(
       });
     }
 
-    if (res.data.status === "completed") {
-      return pages.map(p => ({
-        url: p.url,
-        title: p.title || "",
-        description: p.description || "",
-        statusCode: p.statusCode || 200,
-      }));
-    }
+    if (res.data.status === "completed") return pages;
     if (res.data.status === "failed") throw new Error("Firecrawl job failed");
   }
   throw new Error("Crawl timed out after 5 minutes");
