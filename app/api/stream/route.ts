@@ -35,11 +35,22 @@ async function crawlSite(
 ): Promise<FirecrawlPage[]> {
   emit({ step: "crawl", type: "progress", message: `Submitting crawl job`, detail: baseUrl });
 
-  const start = await axios.post(
-    "https://api.firecrawl.dev/v1/crawl",
-    { url: baseUrl, limit: 50, scrapeOptions: { formats: ["markdown"] } },
-    { headers: { Authorization: `Bearer ${apiKey}` } }
-  );
+  let start;
+  try {
+    start = await axios.post(
+      "https://api.firecrawl.dev/v1/crawl",
+      { url: baseUrl, limit: 50, scrapeOptions: { formats: ["markdown"] } },
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const body = err.response?.data;
+      const bodyMsg = typeof body === "object" ? (body?.error ?? body?.message ?? JSON.stringify(body)) : body;
+      throw new Error(`Firecrawl HTTP ${status}: ${bodyMsg}`);
+    }
+    throw err;
+  }
 
   const jobId: string = start.data.id;
   emit({ step: "crawl", type: "progress", message: `Job started`, detail: `ID: ${jobId}` });
@@ -112,6 +123,65 @@ export interface PageAuditData {
   checks: Record<string, unknown>;
 }
 
+function dfsError(data: Record<string, unknown>): string | null {
+  // DataForSEO often returns HTTP 200 with an error code in the body
+  const code = data?.status_code as number | undefined;
+  const msg = data?.status_message as string | undefined;
+  if (code && code !== 20000) return `DataForSEO error ${code}: ${msg ?? "unknown"}`;
+  return null;
+}
+
+async function auditPage(
+  page: FirecrawlPage,
+  auth: string,
+): Promise<PageAuditData> {
+  const headers = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+
+  let postRes;
+  try {
+    // instant_pages accepts exactly 1 task per request
+    postRes = await axios.post(
+      "https://api.dataforseo.com/v3/on_page/instant_pages",
+      [{ url: page.url, load_resources: false, enable_javascript: false }],
+      { headers }
+    );
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const body = err.response?.data;
+      const bodyMsg = typeof body === "object" ? (body?.status_message ?? JSON.stringify(body)) : body;
+      throw new Error(`DataForSEO HTTP ${status}: ${bodyMsg}`);
+    }
+    throw err;
+  }
+
+  const topLevel = dfsError(postRes.data);
+  if (topLevel) throw new Error(topLevel);
+
+  const task = postRes.data?.tasks?.[0];
+  const taskErr = dfsError(task);
+  if (taskErr) throw new Error(taskErr);
+
+  const item: DFSPageItem = task?.result?.[0]?.items?.[0] ?? {};
+  const score = Math.round((item.onpage_score ?? 0) * 100) / 100;
+
+  return {
+    url: page.url,
+    score,
+    title: item.meta?.title ?? page.title ?? "",
+    description: item.meta?.description ?? page.description ?? "",
+    h1Count: (item.meta?.htags?.h1 ?? []).length,
+    wordCount: item.meta?.content?.plain_text_word_count ?? 0,
+    imagesTotal: item.meta?.images_count ?? 0,
+    imagesMissingAlt: item.meta?.images_without_alt_count ?? 0,
+    internalLinks: item.meta?.internal_links_count ?? 0,
+    externalLinks: item.meta?.external_links_count ?? 0,
+    loadTimeMs: Math.round((item.page_timing?.time_to_interactive ?? 0) * 1000),
+    statusCode: page.statusCode ?? 200,
+    checks: item.checks ?? {},
+  };
+}
+
 async function auditPages(
   pages: FirecrawlPage[],
   login: string,
@@ -119,58 +189,15 @@ async function auditPages(
   emit: (e: SSEEvent) => void
 ): Promise<PageAuditData[]> {
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
-  const headers = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
   const results: PageAuditData[] = [];
-  const BATCH = 5;
 
-  for (let i = 0; i < pages.length; i += BATCH) {
-    const batch = pages.slice(i, i + BATCH);
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    emit({ step: "audit", type: "progress", message: `Auditing ${i + 1} / ${pages.length}`, detail: page.url });
 
-    batch.forEach((p, j) => {
-      emit({
-        step: "audit",
-        type: "progress",
-        message: `Auditing ${i + j + 1} / ${pages.length}`,
-        detail: p.url,
-      });
-    });
-
-    const postRes = await axios.post(
-      "https://api.dataforseo.com/v3/on_page/instant_pages",
-      batch.map(p => ({ url: p.url })),
-      { headers }
-    );
-
-    const taskResults = postRes.data?.tasks || [];
-    for (let j = 0; j < batch.length; j++) {
-      const items = taskResults[j]?.result?.[0]?.items as DFSPageItem[] | undefined;
-      const item: DFSPageItem = items?.[0] ?? {};
-      const page = batch[j];
-      const score = Math.round((item.onpage_score ?? 0) * 100) / 100;
-
-      emit({
-        step: "audit",
-        type: "progress",
-        message: `Score: ${score}/100`,
-        detail: page.url,
-      });
-
-      results.push({
-        url: page.url,
-        score,
-        title: item.meta?.title ?? page.title ?? "",
-        description: item.meta?.description ?? page.description ?? "",
-        h1Count: (item.meta?.htags?.h1 ?? []).length,
-        wordCount: item.meta?.content?.plain_text_word_count ?? 0,
-        imagesTotal: item.meta?.images_count ?? 0,
-        imagesMissingAlt: item.meta?.images_without_alt_count ?? 0,
-        internalLinks: item.meta?.internal_links_count ?? 0,
-        externalLinks: item.meta?.external_links_count ?? 0,
-        loadTimeMs: Math.round((item.page_timing?.time_to_interactive ?? 0) * 1000),
-        statusCode: page.statusCode ?? 200,
-        checks: item.checks ?? {},
-      });
-    }
+    const result = await auditPage(page, auth);
+    emit({ step: "audit", type: "progress", message: `Score: ${result.score}/100`, detail: page.url });
+    results.push(result);
   }
   return results;
 }
