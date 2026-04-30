@@ -2,39 +2,83 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle, XCircle, Loader2, Download, ArrowLeft, Globe, Search, FileText, Sparkles } from "lucide-react";
+import {
+  CheckCircle, XCircle, Loader2, Download, ArrowLeft,
+  Globe, Search, FileText, Sparkles, ChevronRight,
+} from "lucide-react";
 import Link from "next/link";
 
-interface StepState {
-  status: "idle" | "running" | "done" | "error";
-  message: string;
-  detail?: string;
-}
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type StepKey = "crawl" | "audit" | "report" | "pdf";
 
-const STEPS: { key: StepKey; icon: React.ElementType; label: string; desc: string }[] = [
-  { key: "crawl", icon: Globe, label: "Crawling Site", desc: "Discovering all pages with Firecrawl" },
-  { key: "audit", icon: Search, label: "SEO Audit", desc: "Analysing every page with DataForSEO" },
-  { key: "report", icon: Sparkles, label: "Generating Report", desc: "Claude is designing your PDF" },
-  { key: "pdf", icon: FileText, label: "Building PDF", desc: "Rendering final document" },
+interface StepState {
+  status: "idle" | "running" | "done" | "error";
+  summary: string;
+  log: { message: string; detail?: string; ts: number }[];
+}
+
+interface SSEEvent {
+  step: string;
+  type: "start" | "progress" | "done" | "error";
+  message: string;
+  detail?: string;
+  data?: { downloadUrl?: string; pageCount?: number };
+}
+
+// ── Step metadata ──────────────────────────────────────────────────────────
+
+const STEPS: { key: StepKey; icon: React.ElementType; label: string; color: string }[] = [
+  { key: "crawl",  icon: Globe,     label: "Crawling Site",     color: "blue"    },
+  { key: "audit",  icon: Search,    label: "SEO Audit",         color: "violet"  },
+  { key: "report", icon: Sparkles,  label: "Generating Report", color: "amber"   },
+  { key: "pdf",    icon: FileText,  label: "Building PDF",      color: "emerald" },
 ];
+
+const colorMap: Record<string, string> = {
+  blue:    "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  violet:  "bg-violet-500/15 text-violet-400 border-violet-500/20",
+  amber:   "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+};
+
+const ringMap: Record<string, string> = {
+  blue:    "border-blue-500/30 bg-blue-500/[0.03]",
+  violet:  "border-violet-500/30 bg-violet-500/[0.03]",
+  amber:   "border-amber-500/30 bg-amber-500/[0.03]",
+  emerald: "border-emerald-500/30 bg-emerald-500/[0.03]",
+};
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export default function AuditPage({ params }: { params: { id: string } }) {
   const searchParams = useSearchParams();
+  const started = useRef(false);
+  const logRefs = useRef<Record<StepKey, HTMLDivElement | null>>({ crawl: null, audit: null, report: null, pdf: null });
+
   const [steps, setSteps] = useState<Record<StepKey, StepState>>({
-    crawl: { status: "idle", message: "Waiting..." },
-    audit: { status: "idle", message: "Waiting..." },
-    report: { status: "idle", message: "Waiting..." },
-    pdf: { status: "idle", message: "Waiting..." },
+    crawl:  { status: "idle", summary: "Waiting...", log: [] },
+    audit:  { status: "idle", summary: "Waiting...", log: [] },
+    report: { status: "idle", summary: "Waiting...", log: [] },
+    pdf:    { status: "idle", summary: "Waiting...", log: [] },
   });
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [fatalError, setFatalError] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
-  const started = useRef(false);
+  const [fatalError, setFatalError] = useState<string | null>(null);
 
-  const setStep = (key: StepKey, update: Partial<StepState>) => {
-    setSteps(p => ({ ...p, [key]: { ...p[key], ...update } }));
+  const updateStep = (key: StepKey, patch: Partial<StepState>) =>
+    setSteps(p => ({ ...p, [key]: { ...p[key], ...patch } }));
+
+  const appendLog = (key: StepKey, message: string, detail?: string) => {
+    setSteps(p => ({
+      ...p,
+      [key]: { ...p[key], log: [...p[key].log, { message, detail, ts: Date.now() }] },
+    }));
+    // Auto-scroll log
+    setTimeout(() => {
+      const el = logRefs.current[key];
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 30);
   };
 
   useEffect(() => {
@@ -43,104 +87,111 @@ export default function AuditPage({ params }: { params: { id: string } }) {
 
     const urlsParam = searchParams.get("urls");
     const keysParam = searchParams.get("keys");
-    if (!urlsParam || !keysParam) {
-      setFatalError("Missing parameters. Go back and start a new audit.");
-      return;
-    }
+    if (!urlsParam || !keysParam) { setFatalError("Missing parameters — go back and start a new audit."); return; }
 
     const urls: string[] = JSON.parse(decodeURIComponent(urlsParam));
     const keys = JSON.parse(decodeURIComponent(keysParam));
 
-    runAudit(urls, keys);
+    runStream(urls, keys);
   }, []);
 
-  async function runAudit(urls: string[], keys: Record<string, string>) {
-    try {
-      // Step 1: Crawl
-      setStep("crawl", { status: "running", message: `Crawling ${urls.length} site(s)...` });
-      const crawlRes = await fetch("/api/crawl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls, firecrawlKey: keys.firecrawl }),
-      });
-      if (!crawlRes.ok) throw new Error(`Crawl failed: ${(await crawlRes.json()).error}`);
-      const { pages } = await crawlRes.json();
-      setPageCount(pages.length);
-      setStep("crawl", { status: "done", message: `Found ${pages.length} pages`, detail: urls.join(", ") });
+  async function runStream(urls: string[], keys: Record<string, string>) {
+    const res = await fetch("/api/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls, keys, auditId: params.id }),
+    });
 
-      // Step 2: Audit
-      setStep("audit", { status: "running", message: `Auditing ${pages.length} pages...` });
-      const auditRes = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pages, login: keys.dataforseo_login, password: keys.dataforseo_password }),
-      });
-      if (!auditRes.ok) throw new Error(`Audit failed: ${(await auditRes.json()).error}`);
-      const { auditData } = await auditRes.json();
-      setStep("audit", { status: "done", message: `Audited ${auditData.length} pages` });
+    if (!res.body) { setFatalError("No response stream from server."); return; }
 
-      // Step 3: Generate report HTML with Claude
-      setStep("report", { status: "running", message: "Claude is writing your report..." });
-      const reportRes = await fetch("/api/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auditData, urls, anthropicKey: keys.anthropic }),
-      });
-      if (!reportRes.ok) throw new Error(`Report failed: ${(await reportRes.json()).error}`);
-      const { html } = await reportRes.json();
-      setStep("report", { status: "done", message: "Report designed" });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-      // Step 4: PDF
-      setStep("pdf", { status: "running", message: "Rendering PDF..." });
-      const pdfRes = await fetch("/api/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ html, auditId: params.id }),
-      });
-      if (!pdfRes.ok) throw new Error(`PDF failed: ${(await pdfRes.json()).error}`);
-      const { downloadUrl } = await pdfRes.json();
-      setStep("pdf", { status: "done", message: "PDF ready!" });
-      setPdfUrl(downloadUrl);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-      // Update history
-      const history = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
-      const updated = history.map((r: { id: string }) =>
-        r.id === params.id ? { ...r, status: "done", pdfPath: downloadUrl } : r
-      );
-      localStorage.setItem("seo_audit_history", JSON.stringify(updated));
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() ?? "";
 
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setFatalError(msg);
-      const history = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
-      const updated = history.map((r: { id: string }) =>
-        r.id === params.id ? { ...r, status: "error" } : r
-      );
-      localStorage.setItem("seo_audit_history", JSON.stringify(updated));
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith("data:")) continue;
+        try {
+          const event: SSEEvent = JSON.parse(line.slice(5).trim());
+          handleEvent(event);
+        } catch {}
+      }
     }
   }
 
-  const allDone = pdfUrl !== null;
-  const active = STEPS.find(s => steps[s.key].status === "running");
+  function handleEvent(ev: SSEEvent) {
+    if (ev.step === "done") {
+      setPdfUrl(ev.data?.downloadUrl ?? null);
+      setPageCount(ev.data?.pageCount ?? null);
+      const hist = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
+      localStorage.setItem("seo_audit_history", JSON.stringify(
+        hist.map((r: { id: string }) => r.id === params.id ? { ...r, status: "done", pdfPath: ev.data?.downloadUrl } : r)
+      ));
+      return;
+    }
+
+    if (ev.step === "error") {
+      setFatalError(ev.message);
+      const hist = JSON.parse(localStorage.getItem("seo_audit_history") || "[]");
+      localStorage.setItem("seo_audit_history", JSON.stringify(
+        hist.map((r: { id: string }) => r.id === params.id ? { ...r, status: "error" } : r)
+      ));
+      return;
+    }
+
+    const key = ev.step as StepKey;
+    if (!["crawl", "audit", "report", "pdf"].includes(key)) return;
+
+    if (ev.type === "start") {
+      updateStep(key, { status: "running", summary: ev.message });
+      appendLog(key, ev.message, ev.detail);
+    } else if (ev.type === "progress") {
+      updateStep(key, { summary: ev.message });
+      appendLog(key, ev.message, ev.detail);
+    } else if (ev.type === "done") {
+      updateStep(key, { status: "done", summary: ev.message });
+      appendLog(key, ev.message, ev.detail);
+    } else if (ev.type === "error") {
+      updateStep(key, { status: "error", summary: ev.message });
+      setFatalError(ev.message);
+    }
+  }
+
   const progress = STEPS.filter(s => steps[s.key].status === "done").length;
+  const activeStep = STEPS.find(s => steps[s.key].status === "running");
 
   return (
     <div className="min-h-screen">
+      {/* Nav */}
       <nav className="border-b border-white/[0.06] px-6 py-4 flex items-center gap-4">
         <Link href="/" className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-white/[0.05] transition-all">
           <ArrowLeft size={16} />
         </Link>
         <span className="font-semibold text-white">Audit in Progress</span>
+        {activeStep && (
+          <span className="ml-auto text-xs text-zinc-500 flex items-center gap-1.5">
+            <Loader2 size={12} className="animate-spin" />
+            {activeStep.label}
+          </span>
+        )}
       </nav>
 
-      <main className="max-w-2xl mx-auto px-6 py-12">
+      <main className="max-w-2xl mx-auto px-6 py-10">
         {/* Progress bar */}
-        <div className="mb-10">
+        <div className="mb-8">
           <div className="flex justify-between text-xs text-zinc-500 mb-2">
-            <span>{allDone ? "Complete" : active ? active.label : "Starting..."}</span>
-            <span>{progress} / {STEPS.length}</span>
+            <span>{pdfUrl ? "Complete" : activeStep ? activeStep.label : "Starting..."}</span>
+            <span>{progress} / {STEPS.length} steps</span>
           </div>
-          <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+          <div className="h-1 bg-white/[0.05] rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-700"
               style={{ width: `${(progress / STEPS.length) * 100}%` }}
@@ -150,37 +201,70 @@ export default function AuditPage({ params }: { params: { id: string } }) {
 
         {/* Steps */}
         <div className="space-y-3 mb-8">
-          {STEPS.map((step, i) => {
+          {STEPS.map(step => {
             const s = steps[step.key];
             const Icon = step.icon;
-            const isActive = s.status === "running";
+            const isRunning = s.status === "running";
             const isDone = s.status === "done";
             const isError = s.status === "error";
             const isIdle = s.status === "idle";
+            const col = step.color;
 
             return (
               <div
                 key={step.key}
-                className={`glass rounded-2xl p-4 flex items-start gap-4 transition-all duration-300 ${isActive ? "border-violet-500/30 bg-violet-500/[0.04]" : ""} ${isIdle ? "opacity-40" : ""}`}
+                className={`glass rounded-2xl overflow-hidden transition-all duration-300
+                  ${isRunning ? `border ${ringMap[col]}` : ""}
+                  ${isIdle ? "opacity-40" : ""}`}
               >
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isDone ? "bg-emerald-500/15" : isActive ? "bg-violet-500/15" : isError ? "bg-red-500/15" : "bg-white/[0.05]"}`}>
-                  {isDone ? <CheckCircle size={16} className="text-emerald-400" /> :
-                   isError ? <XCircle size={16} className="text-red-400" /> :
-                   isActive ? <Loader2 size={16} className="text-violet-400 animate-spin" /> :
-                   <Icon size={16} className="text-zinc-600" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className={`text-sm font-medium ${isDone ? "text-white" : isActive ? "text-violet-200" : "text-zinc-500"}`}>
+                {/* Step header */}
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border
+                    ${isDone ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" :
+                      isError ? "bg-red-500/15 border-red-500/25 text-red-400" :
+                      isRunning ? `${colorMap[col]} border` :
+                      "bg-white/[0.04] border-white/[0.07] text-zinc-600"}`}
+                  >
+                    {isDone ? <CheckCircle size={15} /> :
+                     isError ? <XCircle size={15} /> :
+                     isRunning ? <Loader2 size={15} className="animate-spin" /> :
+                     <Icon size={15} />}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${isDone ? "text-white" : isRunning ? "text-white" : "text-zinc-500"}`}>
                       {step.label}
                     </p>
-                    <span className={`text-xs ${isDone ? "text-emerald-500" : isActive ? "text-violet-400" : "text-zinc-700"}`}>
-                      {s.message}
-                    </span>
                   </div>
-                  <p className="text-xs text-zinc-600 mt-0.5">{step.desc}</p>
-                  {s.detail && <p className="text-xs text-zinc-700 mt-1 truncate">{s.detail}</p>}
+
+                  <span className={`text-xs tabular-nums flex-shrink-0
+                    ${isDone ? "text-emerald-500" : isRunning ? `text-${col}-400` : "text-zinc-700"}`}>
+                    {s.summary}
+                  </span>
                 </div>
+
+                {/* Live log — shown while running or done with entries */}
+                {(isRunning || isDone) && s.log.length > 0 && (
+                  <div
+                    ref={el => { logRefs.current[step.key] = el; }}
+                    className="border-t border-white/[0.05] bg-black/20 max-h-36 overflow-y-auto px-4 py-2 space-y-0.5"
+                  >
+                    {s.log.map((entry, i) => (
+                      <div key={i} className="flex items-baseline gap-2 text-xs">
+                        <ChevronRight size={10} className="text-zinc-700 flex-shrink-0 mt-0.5" />
+                        <span className="text-zinc-400 flex-shrink-0">{entry.message}</span>
+                        {entry.detail && (
+                          <span className="text-zinc-600 truncate">{entry.detail}</span>
+                        )}
+                      </div>
+                    ))}
+                    {isRunning && (
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <span className="w-1 h-1 rounded-full bg-current animate-ping" style={{ color: "currentColor" }} />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -188,24 +272,24 @@ export default function AuditPage({ params }: { params: { id: string } }) {
 
         {/* Fatal error */}
         {fatalError && (
-          <div className="glass rounded-2xl p-4 border border-red-500/20 bg-red-500/[0.04] text-sm text-red-400">
-            <p className="font-medium mb-1">Audit failed</p>
-            <p className="text-xs text-red-500/70">{fatalError}</p>
+          <div className="glass rounded-2xl p-4 border border-red-500/20 bg-red-500/[0.04] mb-4">
+            <p className="text-sm font-medium text-red-400 mb-1">Audit failed</p>
+            <p className="text-xs text-red-500/60">{fatalError}</p>
           </div>
         )}
 
         {/* Download */}
         {pdfUrl && (
           <div className="glass rounded-2xl p-6 border border-emerald-500/20 bg-emerald-500/[0.03] text-center">
-            <CheckCircle size={32} className="text-emerald-400 mx-auto mb-3" />
-            <p className="text-white font-semibold mb-1">Report Ready</p>
-            {pageCount && <p className="text-zinc-500 text-sm mb-4">{pageCount} pages audited</p>}
+            <CheckCircle size={28} className="text-emerald-400 mx-auto mb-3" />
+            <p className="text-white font-semibold mb-0.5">Report Ready</p>
+            {pageCount && <p className="text-zinc-500 text-sm mb-5">{pageCount} pages audited</p>}
             <a
               href={pdfUrl}
               download
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium text-sm transition-all"
             >
-              <Download size={16} />
+              <Download size={15} />
               Download PDF Report
             </a>
           </div>
