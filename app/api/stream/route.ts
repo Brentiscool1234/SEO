@@ -131,6 +131,19 @@ function dfsError(data: Record<string, unknown>): string | null {
   return null;
 }
 
+function sanitizeUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    // DataForSEO only accepts http/https pages
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    // Strip fragments — #section anchors are not real pages
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function auditPage(
   page: FirecrawlPage,
   auth: string,
@@ -139,7 +152,6 @@ async function auditPage(
 
   let postRes;
   try {
-    // instant_pages accepts exactly 1 task per request
     postRes = await axios.post(
       "https://api.dataforseo.com/v3/on_page/instant_pages",
       [{ url: page.url }],
@@ -191,14 +203,37 @@ async function auditPages(
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
   const results: PageAuditData[] = [];
 
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    emit({ step: "audit", type: "progress", message: `Auditing ${i + 1} / ${pages.length}`, detail: page.url });
-
-    const result = await auditPage(page, auth);
-    emit({ step: "audit", type: "progress", message: `Score: ${result.score}/100`, detail: page.url });
-    results.push(result);
+  // Sanitize and deduplicate before sending anything to DataForSEO
+  const seen = new Set<string>();
+  const clean: FirecrawlPage[] = [];
+  for (const page of pages) {
+    const url = sanitizeUrl(page.url);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    clean.push({ ...page, url });
   }
+
+  const skipped = pages.length - clean.length;
+  if (skipped > 0) {
+    emit({ step: "audit", type: "progress", message: `Skipped ${skipped} invalid/duplicate URLs`, detail: "fragments, non-http, or duplicates removed" });
+  }
+
+  for (let i = 0; i < clean.length; i++) {
+    const page = clean[i];
+    emit({ step: "audit", type: "progress", message: `Auditing ${i + 1} / ${clean.length}`, detail: page.url });
+
+    try {
+      const result = await auditPage(page, auth);
+      emit({ step: "audit", type: "progress", message: `Score: ${result.score}/100`, detail: page.url });
+      results.push(result);
+    } catch (err: unknown) {
+      // Log the failure but keep going — one bad URL shouldn't stop the audit
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      emit({ step: "audit", type: "progress", message: `Skipped (error)`, detail: `${page.url} — ${msg}` });
+    }
+  }
+
+  if (results.length === 0) throw new Error("All pages failed to audit. Check your DataForSEO credentials.");
   return results;
 }
 
