@@ -255,7 +255,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
           <div className="card rounded-2xl p-4 mb-3 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-main">{crawledUrls.length} URLs discovered</p>
+                <p className="text-sm font-medium text-main">URLs discovered</p>
                 <p className="text-xs text-muted mt-0.5">Export now in case you need them later.</p>
               </div>
               <div className="flex items-center gap-2">
