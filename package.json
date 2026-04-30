@@ -2,17 +2,11 @@
   "name": "seo-audit",
   "version": "0.1.0",
   "private": true,
-  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "next build && electron-builder --config electron-builder.yml",
-    "build:win": "next build && electron-builder --win --config electron-builder.yml",
-    "build:mac": "next build && electron-builder --mac --config electron-builder.yml",
-    "build:linux": "next build && electron-builder --linux --config electron-builder.yml"
+    "lint": "next lint"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -30,15 +24,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.0.1",
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
-    "electron": "^41.3.0",
-    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "15.3.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5",
-    "wait-on": "^9.0.5"
+    "typescript": "^5"
   }
 }
