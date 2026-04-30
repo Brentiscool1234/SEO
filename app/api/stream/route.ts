@@ -252,13 +252,14 @@ REPORT STRUCTURE — include ALL of these sections in order:
 2. EXECUTIVE SUMMARY (stat cards)
    - Large bold cards: Total Pages, Avg Score, Critical Issues, Good Pages
 
-3. AI CONSULTANT ANALYSIS — THIS IS THE MOST IMPORTANT SECTION
+3. WHAT HAS TO HAPPEN — THIS IS THE MOST IMPORTANT SECTION
+   Title this section "What Has to Happen" in the report.
    Write 3–5 paragraphs as a senior SEO consultant speaking directly to the client.
    - Start with an honest overall assessment (is the site in good, average, or poor SEO health?)
    - Identify the top 3 patterns/issues you see across the data — be specific, name actual URLs where relevant
    - Explain WHY each issue hurts them (rankings, click-through rate, user experience, crawlability)
    - Give clear, jargon-free language a non-technical client can understand
-   - End with a prioritised "What to fix first" paragraph — most impactful quick wins first
+   - End with a prioritised "What to work on first" paragraph — most impactful quick wins first
    - Tone: confident, helpful, not alarmist. Like a consultant who genuinely wants them to succeed.
 
 4. ISSUE BREAKDOWN (visual)
