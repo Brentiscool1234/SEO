@@ -274,7 +274,10 @@ function buildPrompt(urls: string[], auditData: PageAuditData[]): string {
   const brokenPages   = auditData.filter(p => p.statusCode >= 400);
   const missingAlt    = auditData.filter(p => p.imagesMissingAlt > 0);
 
-  const urlList = (pages: PageAuditData[]) => pages.map(p => `    - ${p.url}`).join("\n") || "    (none)";
+  const pageDetail = (p: PageAuditData) =>
+    `    - ${p.url}\n      Title: "${p.title || "MISSING"}" | Desc: "${p.description ? p.description.slice(0, 80) + "…" : "MISSING"}" | H1s: ${p.h1Count} | Load: ${p.loadTimeMs}ms | Score: ${p.score}`
+
+  const urlList = (pages: PageAuditData[]) => pages.map(pageDetail).join("\n") || "    (none)";
 
   const worst = [...auditData].sort((a, b) => a.score - b.score).slice(0, 10);
   const worstList = worst.map(p =>
@@ -301,13 +304,13 @@ PAGES MISSING H1 TAG (${noH1.length}):
 ${urlList(noH1)}
 
 SLOW PAGES >3s (${slowPages.length}):
-${slowPages.map(p => `    - ${p.url} (${p.loadTimeMs}ms)`).join("\n") || "    (none)"}
+${slowPages.map(p => `    - ${p.url}\n      Load: ${p.loadTimeMs}ms | Score: ${p.score} | Title: "${p.title || "MISSING"}"`).join("\n") || "    (none)"}
 
 BROKEN PAGES 4xx/5xx (${brokenPages.length}):
-${brokenPages.map(p => `    - ${p.url} (${p.statusCode})`).join("\n") || "    (none)"}
+${brokenPages.map(p => `    - ${p.url}\n      Status: ${p.statusCode} | Title: "${p.title || "MISSING"}"`).join("\n") || "    (none)"}
 
 PAGES WITH MISSING IMAGE ALT TEXT (${missingAlt.length}):
-${missingAlt.map(p => `    - ${p.url} (${p.imagesMissingAlt} missing)`).join("\n") || "    (none)"}
+${missingAlt.map(p => `    - ${p.url}\n      ${p.imagesMissingAlt} image(s) missing alt text | Score: ${p.score}`).join("\n") || "    (none)"}
 
 WORST PERFORMING PAGES:
 ${worstList.join("\n")}
@@ -333,12 +336,19 @@ REPORT STRUCTURE — include ALL of these sections in order:
    - End with a prioritised "What to work on first" paragraph — most impactful quick wins first
    - Tone: confident, helpful, not alarmist. Like a consultant who genuinely wants them to succeed.
 
-4. ISSUE BREAKDOWN — one section per issue category, each must list EVERY affected page URL
-   For each of these categories: Missing Title Tags, Missing Meta Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text:
-   - Show the severity badge (Critical / High Priority / Warning)
-   - Write 1–2 sentences explaining the impact
-   - List EVERY affected URL from the data above — do not summarise or truncate, show all of them
-   - If a category has 0 affected pages, show a green "All good" state instead
+4. ISSUE BREAKDOWN — one section per issue category
+   For each category: Missing Title Tags, Missing Meta Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text:
+   - Severity badge (Critical / High Priority / Warning)
+   - 1–2 sentences on the SEO impact
+   - A table or card list showing EVERY affected page with:
+       * The full URL
+       * Its current title (or "Missing" if none)
+       * A specific, actionable recommendation for that exact page
+         e.g. for missing H1: suggest what the H1 should say based on the URL/title
+         e.g. for slow page: recommend image compression, caching, or server response fix
+         e.g. for missing title: suggest a title tag based on the page URL
+   - Do not truncate or summarise — list every single affected page
+   - If 0 affected pages, show a green "All good" state
 
 5. PRIORITISED ACTION PLAN
    - Numbered list of the top 5 fixes, each with:
