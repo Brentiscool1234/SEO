@@ -284,15 +284,13 @@ function buildPrompt(urls: string[], auditData: PageAuditData[]): string {
     `  - ${p.url} | Score: ${p.score} | Load: ${p.loadTimeMs}ms | H1s: ${p.h1Count} | Title: "${p.title || "MISSING"}" | Desc: ${p.description ? "yes" : "MISSING"}`
   );
 
-  return `You are a senior SEO consultant delivering a paid audit report to a client. Generate a complete, professional HTML+CSS report. Do NOT mention AI, Claude, machine learning, or any automated tool anywhere in the report — it should read as if written by a human consultant.
+  return `You are writing an SEO audit report to a business owner as their SEO consultant. You are the expert — write in first person as if speaking directly to the client. Never reference "a developer", "an SEO specialist", or any third party. Keep everything concise and scannable. No walls of text. No guidelines format. Speak plainly and directly. Do NOT mention AI, Claude, or any tool.
 
 AUDIT DATA:
-- Sites audited: ${urls.join(", ")}
+- Sites: ${urls.join(", ")}
 - Total pages: ${auditData.length}
-- Average SEO score: ${avgScore.toFixed(1)}/100
-- Critical pages (score < 40): ${critical.length}
-- Warning pages (score 40–70): ${warnings.length}
-- Good pages (score ≥ 70): ${good.length}
+- Average score: ${avgScore.toFixed(1)}/100
+- Critical (< 40): ${critical.length} | Warnings (40–70): ${warnings.length} | Good (≥ 70): ${good.length}
 
 PAGES WITH MISSING TITLE TAGS (${missingTitles.length}):
 ${urlList(missingTitles)}
@@ -309,71 +307,51 @@ ${slowPages.map(p => `    - ${p.url}\n      Load: ${p.loadTimeMs}ms | Score: ${p
 BROKEN PAGES 4xx/5xx (${brokenPages.length}):
 ${brokenPages.map(p => `    - ${p.url}\n      Status: ${p.statusCode} | Title: "${p.title || "MISSING"}"`).join("\n") || "    (none)"}
 
-PAGES WITH MISSING IMAGE ALT TEXT (${missingAlt.length}):
-${missingAlt.map(p => `    - ${p.url}\n      ${p.imagesMissingAlt} image(s) missing alt text | Score: ${p.score}`).join("\n") || "    (none)"}
+MISSING IMAGE ALT TEXT (${missingAlt.length}):
+${missingAlt.map(p => `    - ${p.url}\n      ${p.imagesMissingAlt} image(s) missing alt | Score: ${p.score}`).join("\n") || "    (none)"}
 
-WORST PERFORMING PAGES:
+WORST PAGES:
 ${worstList.join("\n")}
 
-ALL PAGE DATA (JSON):
+ALL PAGE DATA:
 ${JSON.stringify(auditData, null, 2)}
 
-REPORT STRUCTURE — include ALL of these sections in order:
+REPORT STRUCTURE:
 
 1. HEADER
-   - Agency-style header with report title "SEO Audit Report", date, and domains audited
+   Site name, "SEO Audit Report", date. Clean and minimal.
 
-2. EXECUTIVE SUMMARY (stat cards)
-   - Large bold cards: Total Pages, Avg Score, Critical Issues, Good Pages
+2. SUMMARY CARDS
+   4 cards: Total Pages | Avg Score | Issues Found | Pages in Good Health
 
-3. WHAT HAS TO HAPPEN — THIS IS THE MOST IMPORTANT SECTION
-   Title this section "What Has to Happen" in the report.
-   Write 3–5 paragraphs as a senior SEO consultant speaking directly to the client.
-   - Start with an honest overall assessment (is the site in good, average, or poor SEO health?)
-   - Identify the top 3 patterns/issues you see across the data — be specific, name actual URLs where relevant
-   - Explain WHY each issue hurts them (rankings, click-through rate, user experience, crawlability)
-   - Give clear, jargon-free language a non-technical client can understand
-   - End with a prioritised "What to work on first" paragraph — most impactful quick wins first
-   - Tone: confident, helpful, not alarmist. Like a consultant who genuinely wants them to succeed.
+3. WHAT HAS TO HAPPEN
+   2–3 short paragraphs. Direct, plain English. Talk to them like a person.
+   Lead with the most important problem. Be specific — name actual pages.
+   No bullet points. No headers inside this section. Just clear writing.
+   Tone: straight-talking consultant, not a report template.
 
-4. ISSUE BREAKDOWN — one section per issue category
-   For each category: Missing Title Tags, Missing Meta Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text:
-   - Severity badge (Critical / High Priority / Warning)
-   - 1–2 sentences on the SEO impact
-   - A table or card list showing EVERY affected page with:
-       * The full URL
-       * Its current title (or "Missing" if none)
-       * A specific, actionable recommendation for that exact page
-         e.g. for missing H1: suggest what the H1 should say based on the URL/title
-         e.g. for slow page: recommend image compression, caching, or server response fix
-         e.g. for missing title: suggest a title tag based on the page URL
-   - Do not truncate or summarise — list every single affected page
-   - If 0 affected pages, show a green "All good" state
+4. ISSUES — one block per category
+   For each: Missing Titles, Missing Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text
+   - One sentence on why it matters (no jargon)
+   - A tight table: URL | What to fix (a specific, short instruction for that page)
+   - If none affected: green tick, one line saying it's fine
+   Keep each table row SHORT — the "What to fix" column should be one sentence max.
 
-5. PRIORITISED ACTION PLAN
-   - Numbered list of the top 5 fixes, each with:
-     * Issue name + severity
-     * Plain-English explanation
-     * Why it matters for SEO
-     * Exact action to take
-     * Estimated effort (Low / Medium / High)
+5. ALL PAGES TABLE
+   URL | Score | Title | H1 | Load Time | Status
+   Color-coded rows. No extra columns.
 
-6. PAGE-BY-PAGE TABLE
-   - All pages with columns: URL, Score (color-coded), Title, H1 count, Load Time, Status
-   - Red rows for score < 40, amber for 40–70, green for ≥ 70
+6. FOOTER
+   "SEO Audit Report · ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}"
 
-7. FOOTER
-   - "SEO Audit Report" + date. No mention of AI, Claude, or any tool name.
+DESIGN:
+- Light theme: white background, zinc-900 text, violet #7c3aed accent
+- Red #ef4444 critical, amber #f59e0b warning, emerald #10b981 good
+- Inter font via Google Fonts @import
+- Inline CSS only, fully self-contained
+- Compact but readable — this is a client deliverable, not a textbook
 
-DESIGN REQUIREMENTS:
-- Clean light theme: white/zinc-50 background, zinc-900 text, violet #7c3aed accent
-- Use color sparingly: red #ef4444 for critical, amber #f59e0b for warnings, emerald #10b981 for good
-- Google Fonts @import for Inter
-- Inline CSS only — fully self-contained, no external dependencies
-- Premium agency feel: generous whitespace, clear hierarchy, subtle shadows
-- The "What Has to Happen" section should feel like editorial writing — slightly larger font, generous line height, subtle left border accent
-
-Return ONLY the complete HTML document starting with <!DOCTYPE html>. No markdown, no explanation.`;
+Return ONLY the complete HTML starting with <!DOCTYPE html>.`;
 }
 
 // ── PDF ────────────────────────────────────────────────────────────────────
