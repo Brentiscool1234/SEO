@@ -326,16 +326,27 @@ REPORT STRUCTURE:
 
 3. WHAT HAS TO HAPPEN
    2–3 short paragraphs. Direct, plain English. Talk to them like a person.
+   Cover the full picture — not just critical errors but also general improvements that would move the needle:
+   things like thin content, internal linking gaps, missing schema, URL structure, page depth, canonical issues, image sizes.
    Lead with the most important problem. Be specific — name actual pages.
    No bullet points. No headers inside this section. Just clear writing.
    Tone: straight-talking consultant, not a report template.
 
-4. ISSUES — one block per category
-   For each: Missing Titles, Missing Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text
-   - One sentence on why it matters (no jargon)
-   - A tight table: URL | What to fix (a specific, short instruction for that page)
+4. ISSUES — two groups
+
+   GROUP A — ERRORS (things that are broken):
+   Missing Titles, Missing Descriptions, Missing H1, Slow Pages, Broken Pages, Missing Alt Text
+   - One sentence on why it matters
+   - Tight table: URL | What to fix (one sentence per row)
    - If none affected: green tick, one line saying it's fine
-   Keep each table row SHORT — the "What to fix" column should be one sentence max.
+
+   GROUP B — OPPORTUNITIES (things that aren't broken but could be better):
+   Look at the data and identify general improvements across the site. Include any relevant from:
+   thin content (low word count pages), internal linking (pages with very few internal links),
+   missing schema markup, URL structure issues, pages with no external links, duplicate or near-duplicate titles,
+   canonical tag gaps, image optimisation beyond alt text, pages with high load time but not broken.
+   For each opportunity: one sentence on the benefit, a list of affected pages, one short recommendation.
+   Keep it punchy — this section should feel like extra value, not extra homework.
 
 5. ALL PAGES TABLE
    URL | Score | Title | H1 | Load Time | Status
