@@ -313,8 +313,8 @@ ${missingAlt.map(p => `    - ${p.url}\n      ${p.imagesMissingAlt} image(s) miss
 WORST PAGES:
 ${worstList.join("\n")}
 
-ALL PAGE DATA:
-${JSON.stringify(auditData, null, 2)}
+ALL PAGES (compact):
+${auditData.map(p => `${p.url} | score:${p.score} | title:"${p.title||""}" | h1:${p.h1Count} | desc:${p.description?"yes":"no"} | load:${p.loadTimeMs}ms | status:${p.statusCode} | words:${p.wordCount} | intLinks:${p.internalLinks} | imgMissingAlt:${p.imagesMissingAlt}`).join("\n")}
 
 REPORT STRUCTURE:
 
@@ -445,10 +445,16 @@ export async function POST(req: NextRequest) {
         const msg = await client.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 8192,
+          system: "You are an SEO consultant writing a client report. Always respond with a single complete HTML document starting with <!DOCTYPE html> and nothing else — no markdown, no code fences, no explanation before or after.",
           messages: [{ role: "user", content: buildPrompt(urls, auditData) }],
         });
-        const html = (msg.content[0] as { text: string }).text.trim();
-        if (!html.startsWith("<!DOCTYPE")) throw new Error("Claude returned unexpected content");
+
+        const raw = (msg.content[0] as { text: string }).text.trim();
+        // Strip markdown code fences if Claude wrapped the HTML
+        const html = raw.replace(/^```(?:html)?\n?/i, "").replace(/\n?```$/, "").trim();
+        if (!html.startsWith("<!DOCTYPE") && !html.startsWith("<html")) {
+          throw new Error(`Claude returned unexpected content: ${html.slice(0, 120)}`);
+        }
         emit({ step: "report", type: "done", message: "Report designed successfully" });
 
         // ── Step 4: PDF ──
